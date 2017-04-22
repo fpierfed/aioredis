@@ -1,4 +1,5 @@
 import asyncio
+from functools import lru_cache
 import sys
 
 from asyncio.base_events import BaseEventLoop
@@ -29,8 +30,9 @@ _converters = {
     }
 
 
-def _bytes_len(sized):
-    return str(len(sized)).encode('utf-8')
+@lru_cache(maxsize=1024)
+def _bytes_len(nsized):
+    return str(nsized).encode('utf-8')
 
 
 def encode_command(*args):
@@ -38,21 +40,15 @@ def encode_command(*args):
 
     Raises TypeError if any of args not of bytes, str, int or float type.
     """
-    buf = bytearray()
-
-    def add(data):
-        return buf.extend(data + b'\r\n')
-
-    add(b'*' + _bytes_len(args))
+    parts = [b'*', _bytes_len(len(args)), b'\r\n']
     for arg in args:
-        if type(arg) in _converters:
+        try:
             barg = _converters[type(arg)](arg)
-            add(b'$' + _bytes_len(barg))
-            add(barg)
-        else:
+            parts += [b'$', _bytes_len(len(barg)), b'\r\n', barg, b'\r\n']
+        except:
             raise TypeError("Argument {!r} expected to be of bytes,"
                             " str, int or float type".format(arg))
-    return buf
+    return bytearray(b''.join(parts))
 
 
 def decode(obj, encoding):
